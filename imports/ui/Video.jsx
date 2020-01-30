@@ -1,57 +1,96 @@
 import React, { useState, useEffect } from 'react'
 import { Page, Toolbar, Icon, ProgressCircular, ToolbarButton, Card, ListHeader, ListTitle, ProgressBar } from 'react-onsenui'
+import { connect } from "react-redux";
+import render from 'render-media'
 
-export default function Video({ showMenu }) {
+function Video({ showMenu, client }) {
     const [vid, setVid] = useState(null)
     const [progress, setProgress] = useState(0)
-    var client = new window.WebTorrent()
+
     useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
-        Meteor.call('vids.findOne', urlParams.get('id'), function (err, result) {
+        const id = urlParams.get('id')
+        Meteor.call('vids.findOne', id, function (err, result) {
             if (err) {
                 console.log(err)
                 return
             }
             setVid(result)
-            var torrentId = result.magnetUri
-            client.on('error', err => {
-                console.log('[+] Webtorrent error: ' + err.message);
-            });
 
-            client.add(torrentId, (torrent) => {
-                console.log('Client is downloading:', torrent.infoHash)
-                console.log(torrent.files)
-                torrent.on('done', () => {
-                })
+        }); 
+        return function cleanup(){
 
-                torrent.on('download', function (bytes) {
-                    // console.log(torrent.progress)
-                    setProgress(torrent.progress * 100)
-                })
-                torrent.files.forEach(function (file) {
-                    // Display the file by appending it to the DOM. Supports video, audio, images, and
-                    // more. Specify a container element (CSS selector or reference to DOM node).
-                    file.renderTo("#player")
-                })
+        }
+    }, [])
 
+    useEffect(() => {
+        let mounted = true
+        if (vid == null) {
+            return
+        }
+
+        torrentId = vid.magnetUri
+
+        torrent = client.get(torrentId)
+
+        if(torrent != null){
+            torrent.on('done', () => {
 
             })
 
-        });
-    }, [])
+            torrent.on('download', function (bytes) {
+                // console.log(torrent.progress)
+                if (mounted){
+                setProgress(torrent.progress * 100)
+                }
+            })
+            torrent.files.forEach(function (file) {
+                setProgress(torrent.progress * 100)
+                render.render(file, "#player")
+            })
+            return
+        }
 
-    function progressbar () {
-        switch(progress){
+
+        client.on('error', err => {
+            console.log('[+] Webtorrent error: ' + err.message);
+        });
+
+        client.add(torrentId, (torrent) => {
+            console.log('Client is downloading:', torrent.infoHash)
+            torrent.on('done', () => {
+
+            })
+
+            torrent.on('download', function (bytes) {
+                // console.log(torrent.progress)
+                if (mounted){
+                    setProgress(torrent.progress * 100)
+                    }
+            })
+            torrent.files.forEach(function (file) {
+                render.render(file, "#player")
+            })
+        })
+
+        return function cleanup() {
+            // client.remove(torrentId)
+            mounted = false
+        };
+    }, [vid]);
+
+    function progressbar() {
+        switch (progress) {
             case 0:
-            return <Card>
-                <ProgressBar indeterminate />
-            </Card>
+                return <Card>
+                    <ProgressBar indeterminate />
+                </Card>
             case 100:
-            return 
+                return
             default:
-            return <Card>
-            <ProgressBar value={progress} />
-            </Card>
+                return <Card>
+                    <ProgressBar value={progress} />
+                </Card>
         }
     }
 
@@ -92,14 +131,25 @@ export default function Video({ showMenu }) {
                 </div>
                 <div className="right">
                 </div>
-           </Toolbar>}
+            </Toolbar>}
         >
             {progressbar()}
             <Card>
-                <video id="player" autoPlay width="100%" style={{ maxHeight: 500 }}></video>
+                <video id="player" width="100%" style={{ maxHeight: 500 }} autoPlay></video>
                 <ListHeader modifier="ios">{vid.title}</ListHeader>
                 <ListTitle modifier="ios">{vid.description}</ListTitle>
             </Card>
         </Page>
     )
 }
+
+const mapStateToProps = (state) => {
+    return {
+        client: state.webtorrentreducer.client
+    };
+}
+
+
+export default connect(mapStateToProps)(
+    Video
+);
